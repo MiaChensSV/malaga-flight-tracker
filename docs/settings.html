@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Malaga Flight Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <nav>
+        <a href="index.html" class="logo">Malaga Tracker</a>
+        <a href="index.html">Dashboard</a>
+        <a href="settings.html" class="active">Settings</a>
+    </nav>
+
+    <div class="container">
+        <h1>Settings</h1>
+
+        <!-- Supabase connection -->
+        <div class="card">
+            <h2>Supabase Connection</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                Enter your Supabase project URL and anon key. These are stored in your browser only.
+            </p>
+            <div class="settings-form">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Supabase URL</label>
+                        <input type="text" id="sb-url" placeholder="https://xxx.supabase.co"
+                            style="width:100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text); font-size: 0.9rem;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Anon Key</label>
+                        <input type="password" id="sb-key" placeholder="eyJhbGciOi..."
+                            style="width:100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text); font-size: 0.9rem;">
+                    </div>
+                </div>
+                <div>
+                    <button class="btn btn-primary" id="save-connection">Save Connection</button>
+                    <span class="save-status" id="connection-status">Saved!</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Route settings -->
+        <div class="card">
+            <h2>Route Thresholds</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                Set the maximum price (one-way) that triggers a Telegram alert for each route.
+            </p>
+            <div id="routes-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading settings...</p>
+            </div>
+            <div class="settings-form" id="routes-form" style="display:none"></div>
+            <div style="margin-top: 1rem;" id="routes-actions" style="display:none">
+                <button class="btn btn-primary" id="save-routes">Save All</button>
+                <span class="save-status" id="routes-status">Saved!</span>
+            </div>
+        </div>
+
+        <!-- Apartments -->
+        <div class="card">
+            <h2>Apartments</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                Apartment calendar IDs are configured in Supabase directly.
+            </p>
+            <div id="apartments-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading apartments...</p>
+            </div>
+            <div id="apartments-list"></div>
+        </div>
+    </div>
+
+    <script>
+    // Supabase connection management
+    const SB_URL_KEY = 'mft_supabase_url';
+    const SB_KEY_KEY = 'mft_supabase_key';
+
+    function getConnection() {
+        return {
+            url: localStorage.getItem(SB_URL_KEY) || '',
+            key: localStorage.getItem(SB_KEY_KEY) || '',
+        };
+    }
+
+    function getClient() {
+        const conn = getConnection();
+        if (!conn.url || !conn.key) return null;
+        return supabase.createClient(conn.url, conn.key);
+    }
+
+    // Init connection fields
+    const conn = getConnection();
+    document.getElementById('sb-url').value = conn.url;
+    document.getElementById('sb-key').value = conn.key;
+
+    document.getElementById('save-connection').addEventListener('click', () => {
+        localStorage.setItem(SB_URL_KEY, document.getElementById('sb-url').value.trim());
+        localStorage.setItem(SB_KEY_KEY, document.getElementById('sb-key').value.trim());
+        const el = document.getElementById('connection-status');
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 2000);
+        loadSettings();
+    });
+
+    // Load route settings
+    async function loadSettings() {
+        const client = getClient();
+        if (!client) {
+            document.getElementById('routes-loading').innerHTML = '<p style="color:var(--text-muted)">Configure Supabase connection above first.</p>';
+            document.getElementById('apartments-loading').innerHTML = '<p style="color:var(--text-muted)">Configure Supabase connection above first.</p>';
+            return;
+        }
+
+        try {
+            // Routes
+            const { data: routes, error: routesErr } = await client.from('settings').select('*').order('id');
+            if (routesErr) throw routesErr;
+
+            const form = document.getElementById('routes-form');
+            form.innerHTML = '';
+            form.style.display = 'flex';
+            document.getElementById('routes-loading').style.display = 'none';
+
+            routes.forEach(r => {
+                const row = document.createElement('div');
+                row.className = 'setting-row';
+                row.dataset.id = r.id;
+                row.innerHTML = `
+                    <div>
+                        <label>From</label>
+                        <input type="text" class="rf" value="${r.route_from}" maxlength="3" style="text-transform:uppercase">
+                    </div>
+                    <div>
+                        <label>To</label>
+                        <input type="text" class="rt" value="${r.route_to}" maxlength="3" style="text-transform:uppercase">
+                    </div>
+                    <div>
+                        <label>Threshold (${r.currency})</label>
+                        <input type="number" class="pt" value="${r.price_threshold || ''}">
+                    </div>
+                    <div>
+                        <label>Look-ahead (days)</label>
+                        <input type="number" class="la" value="${r.look_ahead_days}">
+                    </div>
+                `;
+                form.appendChild(row);
+            });
+
+            // Apartments
+            const { data: apartments, error: aptErr } = await client.from('apartments').select('*').order('id');
+            if (aptErr) throw aptErr;
+
+            const list = document.getElementById('apartments-list');
+            list.innerHTML = '';
+            document.getElementById('apartments-loading').style.display = 'none';
+
+            apartments.forEach(a => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem;';
+                div.innerHTML = `<strong>${a.name}</strong> <span style="color:var(--text-muted)">${a.google_calendar_id}</span>`;
+                list.appendChild(div);
+            });
+        } catch (err) {
+            console.error('Failed to load settings:', err);
+            document.getElementById('routes-loading').innerHTML = `<p style="color:var(--red)">Error: ${err.message}</p>`;
+        }
+    }
+
+    // Save route settings
+    document.getElementById('save-routes').addEventListener('click', async () => {
+        const client = getClient();
+        if (!client) return;
+
+        const rows = document.querySelectorAll('.setting-row');
+        try {
+            for (const row of rows) {
+                const id = row.dataset.id;
+                const updates = {
+                    route_from: row.querySelector('.rf').value.toUpperCase(),
+                    route_to: row.querySelector('.rt').value.toUpperCase(),
+                    price_threshold: parseFloat(row.querySelector('.pt').value) || null,
+                    look_ahead_days: parseInt(row.querySelector('.la').value) || 60,
+                    updated_at: new Date().toISOString(),
+                };
+                await client.from('settings').update(updates).eq('id', id);
+            }
+            const el = document.getElementById('routes-status');
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), 2000);
+        } catch (err) {
+            alert('Failed to save: ' + err.message);
+        }
+    });
+
+    // Initial load
+    loadSettings();
+    </script>
+</body>
+</html>

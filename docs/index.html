@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malaga Flight Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <nav>
+        <a href="index.html" class="logo">Malaga Tracker</a>
+        <a href="index.html" class="active">Dashboard</a>
+        <a href="settings.html">Settings</a>
+    </nav>
+
+    <div class="container">
+        <h1>Flight Prices to Malaga</h1>
+
+        <!-- Status overview -->
+        <div class="status-bar" id="status-bar">
+            <div class="status-item">
+                <div class="label">Cheapest Today</div>
+                <div class="value cheap" id="cheapest-price">--</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Route</div>
+                <div class="value" id="cheapest-route">--</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Last Checked</div>
+                <div class="value" id="last-checked">--</div>
+            </div>
+        </div>
+
+        <!-- Route tabs -->
+        <div class="route-tabs" id="route-tabs"></div>
+
+        <!-- Calendar view -->
+        <div class="card calendar-container">
+            <div class="calendar-header">
+                <button id="prev-month">&larr; Prev</button>
+                <h2 id="calendar-title">Loading...</h2>
+                <button id="next-month">Next &rarr;</button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+        </div>
+
+        <!-- Price chart -->
+        <div class="card">
+            <h2>Price Trends</h2>
+            <div class="chart-container">
+                <canvas id="price-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flight detail popup -->
+    <div class="overlay" id="overlay" style="display:none"></div>
+    <div class="flight-detail" id="flight-detail" style="display:none">
+        <button class="close-btn" id="close-detail">&times;</button>
+        <h3 id="detail-title"></h3>
+        <div id="detail-body"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
