@@ -18,9 +18,11 @@ def _date_in_any_window(dep_date: date, windows: list[dict]) -> list[dict]:
     return matching
 
 
-def _route_pair_key(route_from: str, route_to: str) -> tuple[str, str]:
-    """Return a consistent key for a route pair (e.g. CPH↔AGP always returns ('AGP','CPH'))."""
-    return tuple(sorted([route_from, route_to]))
+def _route_pair_key(route_from: str, route_to: str) -> str:
+    """Return a consistent key for a route pair, Scandinavian airport first (e.g. 'CPH ↔ AGP')."""
+    if route_from == "AGP":
+        return f"{route_to} ↔ {route_from}"
+    return f"{route_from} ↔ {route_to}"
 
 
 def main():
@@ -56,8 +58,9 @@ def main():
     # 3. Search flights and collect cheap ones grouped by route pair
     today = date.today()
     all_prices = []
-    # Group cheap flights by route pair: {('AGP','CPH'): [flight, ...]}
-    cheap_by_pair: dict[tuple, list[dict]] = {}
+    # Group cheap flights by route pair: {'CPH ↔ AGP': [flight, ...]}
+    cheap_by_pair: dict[str, list[dict]] = {}
+    seen_flights: set = set()  # Dedup: (route_from, route_to, date)
 
     for setting in settings:
         route_from = setting["route_from"]
@@ -103,29 +106,32 @@ def main():
                 continue
             for flight in prices:
                 if flight["price"] is not None and flight["price"] < threshold:
+                    flight_key = (flight["route_from"], flight["route_to"], flight["departure_date"])
+                    if flight_key in seen_flights:
+                        continue
                     dep = date.fromisoformat(flight["departure_date"])
                     matching = _date_in_any_window(dep, windows)
                     if matching:
                         pair = _route_pair_key(route_from, route_to)
                         cheap_by_pair.setdefault(pair, []).append(flight)
+                        seen_flights.add(flight_key)
 
     # 4. Send one consolidated Telegram alert per route pair
     alerts_sent = 0
-    for pair, flights in cheap_by_pair.items():
-        label = f"{pair[0]} ↔ {pair[1]}"
+    for pair_label, flights in cheap_by_pair.items():
         # Collect all relevant apartment windows for these flights
         all_matching = []
         for f in flights:
             dep = date.fromisoformat(f["departure_date"])
             all_matching.extend(_date_in_any_window(dep, windows))
 
-        msg = format_pair_alert(label, flights, all_matching)
+        msg = format_pair_alert(pair_label, flights, all_matching)
         try:
             send_alert(msg)
             alerts_sent += 1
-            print(f"  Alert sent for {label}: {len(flights)} cheap flights")
+            print(f"  Alert sent for {pair_label}: {len(flights)} cheap flights")
         except Exception as e:
-            print(f"  Failed to send alert for {label}: {e}")
+            print(f"  Failed to send alert for {pair_label}: {e}")
 
     # 5. Save to database
     if all_prices:

@@ -33,7 +33,8 @@ def format_pair_alert(pair_label: str, cheap_flights: list[dict], windows: list[
         "",
     ]
 
-    for flight in sorted(cheap_flights, key=lambda f: (f["route_from"], f["departure_date"])):
+    # Sort: outbound (XXX→AGP) first, then return (AGP→XXX), by date
+    for flight in sorted(cheap_flights, key=lambda f: (f["route_from"] == "AGP", f["departure_date"])):
         lines.append(
             f"<b>{flight['route_from']}→{flight['route_to']}</b>  "
             f"💰 {flight['price']:.0f} {flight['currency']}  "
