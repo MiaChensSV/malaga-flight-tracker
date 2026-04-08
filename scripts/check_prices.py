@@ -6,7 +6,7 @@ from datetime import date
 from db import get_client, get_settings, get_apartments, upsert_prices, insert_price_history
 from calendar_api import get_available_windows
 from flight_api import search_flights
-from notify import send_alert, format_alert
+from notify import send_alert, format_pair_alert
 
 
 def _date_in_any_window(dep_date: date, windows: list[dict]) -> list[dict]:
@@ -16,6 +16,11 @@ def _date_in_any_window(dep_date: date, windows: list[dict]) -> list[dict]:
         if w["window_start"] <= dep_date <= w["window_end"]:
             matching.append(w)
     return matching
+
+
+def _route_pair_key(route_from: str, route_to: str) -> tuple[str, str]:
+    """Return a consistent key for a route pair (e.g. CPH↔AGP always returns ('AGP','CPH'))."""
+    return tuple(sorted([route_from, route_to]))
 
 
 def main():
@@ -48,11 +53,11 @@ def main():
     for w in windows:
         print(f"  {w['apartment_name']}: {w['window_start']} → {w['window_end']}")
 
-    # 3. Merge overlapping windows into non-overlapping search ranges
+    # 3. Search flights and collect cheap ones grouped by route pair
     today = date.today()
     all_prices = []
-    alerts_sent = 0
-    alerted = set()  # Track (route, date) to avoid duplicate alerts
+    # Group cheap flights by route pair: {('AGP','CPH'): [flight, ...]}
+    cheap_by_pair: dict[tuple, list[dict]] = {}
 
     for setting in settings:
         route_from = setting["route_from"]
@@ -93,27 +98,36 @@ def main():
 
             all_prices.extend(prices)
 
-            # Check for alerts (deduplicated)
+            # Collect cheap flights for grouped alerts
             if threshold is None:
                 continue
             for flight in prices:
-                alert_key = (route_from, flight["departure_date"])
-                if alert_key in alerted:
-                    continue
                 if flight["price"] is not None and flight["price"] < threshold:
                     dep = date.fromisoformat(flight["departure_date"])
                     matching = _date_in_any_window(dep, windows)
                     if matching:
-                        msg = format_alert(flight, matching)
-                        try:
-                            send_alert(msg)
-                            alerts_sent += 1
-                            alerted.add(alert_key)
-                            print(f"  Alert sent: {flight['price']} {currency} on {flight['departure_date']}")
-                        except Exception as e:
-                            print(f"  Failed to send alert: {e}")
+                        pair = _route_pair_key(route_from, route_to)
+                        cheap_by_pair.setdefault(pair, []).append(flight)
 
-    # 4. Save to database
+    # 4. Send one consolidated Telegram alert per route pair
+    alerts_sent = 0
+    for pair, flights in cheap_by_pair.items():
+        label = f"{pair[0]} ↔ {pair[1]}"
+        # Collect all relevant apartment windows for these flights
+        all_matching = []
+        for f in flights:
+            dep = date.fromisoformat(f["departure_date"])
+            all_matching.extend(_date_in_any_window(dep, windows))
+
+        msg = format_pair_alert(label, flights, all_matching)
+        try:
+            send_alert(msg)
+            alerts_sent += 1
+            print(f"  Alert sent for {label}: {len(flights)} cheap flights")
+        except Exception as e:
+            print(f"  Failed to send alert for {label}: {e}")
+
+    # 5. Save to database
     if all_prices:
         print(f"Saving {len(all_prices)} price records...")
         try:
@@ -122,7 +136,7 @@ def main():
         except Exception as e:
             print(f"Error saving prices: {e}")
 
-    print(f"Done. {len(all_prices)} prices checked, {alerts_sent} alerts sent.")
+    print(f"Done. {len(all_prices)} prices checked, {alerts_sent} alert messages sent.")
 
 
 if __name__ == "__main__":

@@ -23,21 +23,34 @@ def send_alert(message: str) -> None:
     resp.raise_for_status()
 
 
-def format_alert(flight: dict, matching_windows: list[dict]) -> str:
-    """Format a cheap-flight alert message."""
+def format_pair_alert(pair_label: str, cheap_flights: list[dict], windows: list[dict]) -> str:
+    """Format a consolidated alert for a route pair (e.g. CPH ↔ AGP).
+
+    cheap_flights: list of flight dicts with matching_windows already attached.
+    """
     lines = [
-        "<b>✈️ CHEAP FLIGHT + APARTMENT FREE!</b>",
-        "",
-        f"<b>{flight['route_from']} → {flight['route_to']}</b>",
-        f"💰 {flight['price']} {flight['currency']} (one-way)",
-        f"📅 {flight['departure_date']}",
-        f"✈️ {flight['airline']}",
-        f"🔗 <a href=\"{flight['booking_link']}\">Book now</a>",
+        f"<b>✈️ {pair_label}</b>",
         "",
     ]
-    for w in matching_windows:
+
+    for flight in sorted(cheap_flights, key=lambda f: (f["route_from"], f["departure_date"])):
+        lines.append(
+            f"<b>{flight['route_from']}→{flight['route_to']}</b>  "
+            f"💰 {flight['price']:.0f} {flight['currency']}  "
+            f"📅 {flight['departure_date']}  "
+            f"✈️ {flight['airline']}"
+        )
+        lines.append(f"  🔗 <a href=\"{flight['booking_link']}\">Book</a>")
+
+    lines.append("")
+    lines.append("<b>🏠 Available apartments:</b>")
+    seen = set()
+    for w in windows:
         start = w["window_start"].isoformat() if hasattr(w["window_start"], "isoformat") else w["window_start"]
         end = w["window_end"].isoformat() if hasattr(w["window_end"], "isoformat") else w["window_end"]
-        lines.append(f"🏠 {w['apartment_name']}: free {start} → {end}")
+        key = (w["apartment_name"], start, end)
+        if key not in seen:
+            seen.add(key)
+            lines.append(f"  {w['apartment_name']}: {start} → {end}")
 
     return "\n".join(lines)
