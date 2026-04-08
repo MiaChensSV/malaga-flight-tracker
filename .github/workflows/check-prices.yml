@@ -21,7 +21,7 @@ jobs:
           cache-dependency-path: scripts/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --pre -r scripts/requirements.txt
 
       - name: Run price checker
         env:

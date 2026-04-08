@@ -1,7 +1,7 @@
 """Multi-source flight price search.
 
-1. Google Flights (via fast-flights) — all airlines (easyJet, Norwegian, SAS, Ryanair, etc.)
-2. Ryanair fare finder API — Ryanair-only fallback, no API key needed
+1. Google Flights (via fast-flights v3) — all airlines (SAS, Norwegian, Ryanair, etc.)
+2. Ryanair fare finder API — Ryanair-only, no API key needed
 
 Keeps the cheapest price per date across all sources. All prices converted to SEK.
 """
@@ -59,15 +59,15 @@ def _to_sek(amount: float, from_currency: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Google Flights via fast-flights (all airlines)
+# Google Flights via fast-flights v3 (all airlines)
 # ---------------------------------------------------------------------------
 
 def _search_google_flights(
     route_from: str, route_to: str, date_from: date, date_to: date
 ) -> list[dict]:
-    """Search Google Flights for cheapest flight per date. Returns [] on failure."""
+    """Search Google Flights using fast-flights v3 (primp + embedded JS data)."""
     try:
-        from fast_flights import get_flights, FlightData, Passengers
+        from fast_flights import FlightQuery, Passengers, create_query, get_flights
     except ImportError:
         print("    fast-flights not installed, skipping Google Flights.")
         return []
@@ -76,9 +76,9 @@ def _search_google_flights(
     current = date_from
     while current <= date_to:
         try:
-            result = get_flights(
-                flight_data=[
-                    FlightData(
+            query = create_query(
+                flights=[
+                    FlightQuery(
                         date=current.isoformat(),
                         from_airport=route_from,
                         to_airport=route_to,
@@ -87,21 +87,24 @@ def _search_google_flights(
                 trip="one-way",
                 seat="economy",
                 passengers=Passengers(adults=1),
+                currency="SEK",
             )
 
-            if result.flights:
-                best = result.flights[0]  # First result is cheapest
-                # Parse price string like "SEK 1,234" or "€123"
-                price_sek = _parse_google_price(best.price)
-                if price_sek is not None:
+            flights_result = get_flights(query)
+
+            if flights_result:
+                best = flights_result[0]
+                price_sek = best.price
+                if price_sek is not None and price_sek > 0:
+                    airline = ", ".join(best.airlines) if best.airlines else "Unknown"
                     results.append(
                         {
                             "route_from": route_from,
                             "route_to": route_to,
                             "departure_date": current.isoformat(),
-                            "price": price_sek,
+                            "price": float(price_sek),
                             "currency": "SEK",
-                            "airline": best.name or "Unknown",
+                            "airline": airline,
                             "booking_link": _google_flights_link(
                                 route_from, route_to, current.isoformat()
                             ),
@@ -109,45 +112,14 @@ def _search_google_flights(
                     )
         except Exception as e:
             print(f"    Google Flights error for {current}: {e}")
-            # If we get consent/block errors, stop trying this source
-            if "cookie" in str(e).lower() or "consent" in str(e).lower():
-                print("    Google Flights blocked (consent). Stopping.")
+            if "consent" in str(e).lower() or "blocked" in str(e).lower():
+                print("    Google Flights blocked. Stopping this route.")
                 break
 
         current += timedelta(days=1)
-        time.sleep(1)  # Be polite to Google
+        time.sleep(2)  # Rate limit: be polite to Google
 
     return results
-
-
-def _parse_google_price(price_str: str) -> float | None:
-    """Parse price strings like 'SEK 1,234', '€123', 'kr1 234', '$99'."""
-    if not price_str:
-        return None
-    # Map currency symbols/prefixes
-    currency_map = {
-        "€": "EUR", "EUR": "EUR",
-        "$": "USD", "USD": "USD",
-        "£": "GBP", "GBP": "GBP",
-        "kr": "SEK", "SEK": "SEK",
-        "DKK": "DKK", "NOK": "NOK",
-    }
-    detected_currency = "SEK"
-    cleaned = price_str.strip()
-
-    for symbol, cur in currency_map.items():
-        if symbol in cleaned:
-            detected_currency = cur
-            cleaned = cleaned.replace(symbol, "")
-            break
-
-    # Remove non-numeric characters except dot
-    cleaned = cleaned.replace(",", "").replace(" ", "").replace("\xa0", "").strip()
-    try:
-        amount = float(cleaned)
-        return _to_sek(amount, detected_currency)
-    except ValueError:
-        return None
 
 
 def _google_flights_link(origin: str, dest: str, dep_date: str) -> str:
@@ -226,13 +198,13 @@ def search_flights(
     """Search all sources and return the cheapest flight per date."""
     all_results = []
 
-    # Source 1: Google Flights (all airlines)
+    # Source 1: Google Flights (all airlines: SAS, Norwegian, Ryanair, etc.)
     print(f"    [Google Flights] {route_from}→{route_to}...")
     gf = _search_google_flights(route_from, route_to, date_from, date_to)
     print(f"    [Google Flights] {len(gf)} results")
     all_results.extend(gf)
 
-    # Source 2: Ryanair (fast bulk fetch)
+    # Source 2: Ryanair (fast bulk fetch, single API call for entire range)
     print(f"    [Ryanair] {route_from}→{route_to}...")
     ry = _search_ryanair(route_from, route_to, date_from, date_to)
     print(f"    [Ryanair] {len(ry)} results")
