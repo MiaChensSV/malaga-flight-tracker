@@ -110,11 +110,14 @@ def _search_google_flights(
                             ),
                         }
                     )
+        except (TypeError, IndexError):
+            pass  # No flights for this date (common for small airports)
         except Exception as e:
-            print(f"    Google Flights error for {current}: {e}")
-            if "consent" in str(e).lower() or "blocked" in str(e).lower():
+            err_msg = str(e).lower()
+            if "consent" in err_msg or "blocked" in err_msg:
                 print("    Google Flights blocked. Stopping this route.")
                 break
+            print(f"    Google Flights error for {current}: {e}")
 
         current += timedelta(days=1)
         time.sleep(2)  # Rate limit: be polite to Google
