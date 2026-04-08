@@ -93,23 +93,24 @@ def _search_google_flights(
             flights_result = get_flights(query)
 
             if flights_result:
-                best = flights_result[0]
-                price_sek = best.price
-                if price_sek is not None and price_sek > 0:
-                    airline = ", ".join(best.airlines) if best.airlines else "Unknown"
-                    results.append(
-                        {
-                            "route_from": route_from,
-                            "route_to": route_to,
-                            "departure_date": current.isoformat(),
-                            "price": float(price_sek),
-                            "currency": "SEK",
-                            "airline": airline,
-                            "booking_link": _google_flights_link(
-                                route_from, route_to, current.isoformat()
-                            ),
-                        }
-                    )
+                for flight in flights_result:
+                    price_sek = flight.price
+                    if price_sek is not None and price_sek > 0:
+                        airline = ", ".join(flight.airlines) if flight.airlines else "Unknown"
+                        print(f"      {current} {airline}: {price_sek} SEK")
+                        results.append(
+                            {
+                                "route_from": route_from,
+                                "route_to": route_to,
+                                "departure_date": current.isoformat(),
+                                "price": float(price_sek),
+                                "currency": "SEK",
+                                "airline": airline,
+                                "booking_link": _google_flights_link(
+                                    route_from, route_to, current.isoformat()
+                                ),
+                            }
+                        )
         except (TypeError, IndexError):
             pass  # No flights for this date (common for small airports)
         except Exception as e:
@@ -213,11 +214,11 @@ def search_flights(
     print(f"    [Ryanair] {len(ry)} results")
     all_results.extend(ry)
 
-    # Deduplicate: keep cheapest per date
-    best_per_date: dict[str, dict] = {}
+    # Deduplicate: keep cheapest per (date, airline) so multiple airlines survive
+    best: dict[tuple, dict] = {}
     for r in all_results:
-        key = r["departure_date"]
-        if key not in best_per_date or r["price"] < best_per_date[key]["price"]:
-            best_per_date[key] = r
+        key = (r["departure_date"], r["airline"])
+        if key not in best or r["price"] < best[key]["price"]:
+            best[key] = r
 
-    return list(best_per_date.values())
+    return list(best.values())
