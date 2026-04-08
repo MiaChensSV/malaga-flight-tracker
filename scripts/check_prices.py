@@ -48,9 +48,11 @@ def main():
     for w in windows:
         print(f"  {w['apartment_name']}: {w['window_start']} → {w['window_end']}")
 
-    # 3. Fetch flight prices only for dates within available windows
+    # 3. Merge overlapping windows into non-overlapping search ranges
+    today = date.today()
     all_prices = []
     alerts_sent = 0
+    alerted = set()  # Track (route, date) to avoid duplicate alerts
 
     for setting in settings:
         route_from = setting["route_from"]
@@ -59,22 +61,29 @@ def main():
         threshold = setting.get("price_threshold")
         look_ahead = setting.get("look_ahead_days", 60)
 
-        # Determine the date ranges to search based on windows
-        # Merge overlapping window ranges for this route's look-ahead
-        today = date.today()
-        search_ranges = []
+        # Collect and merge all window ranges for this route
+        raw_ranges = []
         for w in windows:
             w_start = max(w["window_start"], today)
             w_end = w["window_end"]
             if (w_start - today).days <= look_ahead:
-                search_ranges.append((w_start, w_end))
+                raw_ranges.append((w_start, w_end))
 
-        if not search_ranges:
+        if not raw_ranges:
             print(f"  {route_from}→{route_to}: no windows within look-ahead. Skipping.")
             continue
 
-        # Search each window range
-        for range_start, range_end in search_ranges:
+        # Merge overlapping/adjacent ranges to avoid duplicate API calls
+        raw_ranges.sort()
+        merged = [raw_ranges[0]]
+        for start, end in raw_ranges[1:]:
+            if start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        # Search each merged range
+        for range_start, range_end in merged:
             print(f"  Searching {route_from}→{route_to} for {range_start} to {range_end}...")
             try:
                 prices = search_flights(route_from, route_to, range_start, range_end, currency)
@@ -84,10 +93,13 @@ def main():
 
             all_prices.extend(prices)
 
-            # Check for alerts
+            # Check for alerts (deduplicated)
             if threshold is None:
                 continue
             for flight in prices:
+                alert_key = (route_from, flight["departure_date"])
+                if alert_key in alerted:
+                    continue
                 if flight["price"] is not None and flight["price"] < threshold:
                     dep = date.fromisoformat(flight["departure_date"])
                     matching = _date_in_any_window(dep, windows)
@@ -96,6 +108,7 @@ def main():
                         try:
                             send_alert(msg)
                             alerts_sent += 1
+                            alerted.add(alert_key)
                             print(f"  Alert sent: {flight['price']} {currency} on {flight['departure_date']}")
                         except Exception as e:
                             print(f"  Failed to send alert: {e}")

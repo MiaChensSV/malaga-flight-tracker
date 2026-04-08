@@ -29,10 +29,17 @@ def upsert_prices(client: Client, prices: list[dict]) -> None:
     if not prices:
         return
     now = datetime.now(timezone.utc).isoformat()
+    # Deduplicate: keep cheapest price per (route_from, route_to, departure_date)
+    best = {}
     for p in prices:
+        key = (p["route_from"], p["route_to"], p["departure_date"])
+        if key not in best or (p["price"] is not None and p["price"] < best[key].get("price", float("inf"))):
+            best[key] = p
+    deduped = list(best.values())
+    for p in deduped:
         p["checked_at"] = now
     client.table("prices").upsert(
-        prices, on_conflict="route_from,route_to,departure_date"
+        deduped, on_conflict="route_from,route_to,departure_date"
     ).execute()
 
 
