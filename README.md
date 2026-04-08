@@ -6,7 +6,7 @@ Monitor flight prices from Scandinavia (CPH, GOT, ARN) to Malaga (AGP). Get Tele
 
 1. **GitHub Actions** runs every 6 hours
 2. Checks **Google Calendar** for apartment availability (5+ day free windows)
-3. Fetches **flight prices** from Kiwi Tequila API for available dates only
+3. Fetches **flight prices** from Ryanair's public API for available dates only
 4. Sends **Telegram alert** when price < threshold and apartment is free
 5. **Dashboard** on GitHub Pages shows prices, calendar, and settings
 
@@ -26,10 +26,9 @@ Monitor flight prices from Scandinavia (CPH, GOT, ARN) to Malaga (AGP). Get Tele
 3. Create a **Service Account** and download the JSON key
 4. Share both apartment calendars with the service account email (read-only)
 
-### 3. Kiwi Tequila API
+### 3. Flight API
 
-1. Sign up at [tequila.kiwi.com](https://tequila.kiwi.com)
-2. Get your API key
+No setup needed! Uses Ryanair's public fare finder API (no key required).
 
 ### 4. Telegram Bot
 
@@ -42,7 +41,6 @@ Monitor flight prices from Scandinavia (CPH, GOT, ARN) to Malaga (AGP). Get Tele
 1. Create a public repo (required for free Actions minutes)
 2. Push this code
 3. Add these **repository secrets** (Settings → Secrets → Actions):
-   - `KIWI_API_KEY`
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHAT_ID`
    - `SUPABASE_URL`
@@ -66,7 +64,6 @@ pip install -r requirements.txt
 # Set environment variables
 export SUPABASE_URL="https://xxx.supabase.co"
 export SUPABASE_KEY="eyJ..."
-export KIWI_API_KEY="your-key"
 export TELEGRAM_BOT_TOKEN="your-token"
 export TELEGRAM_CHAT_ID="your-chat-id"
 export GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
@@ -81,7 +78,7 @@ malaga-flight-tracker/
 ├── .github/workflows/check-prices.yml   # Cron job (every 6h)
 ├── scripts/
 │   ├── check_prices.py                  # Main orchestrator
-│   ├── flight_api.py                    # Kiwi Tequila API
+│   ├── flight_api.py                    # Ryanair fare finder API
 │   ├── calendar_api.py                  # Google Calendar
 │   ├── notify.py                        # Telegram alerts
 │   ├── db.py                            # Supabase client
